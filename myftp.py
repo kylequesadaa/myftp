@@ -124,7 +124,70 @@ def main():
             else:
                 print("Failure: passive mode (PASV) did not return 227.")  # explain why ls failed
 
-        elif userCmd == "quit":  # quit command to end session 
+        elif userCmd.startswith("get "):  # map get to the FTP RETR command
+            parts = userCmd.split(" ", 1)  # split into command and filename
+            filename = parts[1].strip()  # extract the remote filename
+
+            pasvStatus, dataSocket = modePASV(clientSocket)  # enter passive mode and open data connection
+            if pasvStatus == 227 and dataSocket is not None:  # only proceed if passive mode succeeded
+                retrResp = sendCommand(clientSocket, "RETR " + filename + "\r\n")  # ask server to send the file
+                print(retrResp)  # show 150 type message from the server
+
+                if retrResp.startswith("150"):  # server is ready to send the file
+                    totalBytes = 0  # track bytes transferred for the required success message
+                    fileBytes = b""  # store bytes received from the data connection
+
+                    while True:  # read until server closes the data connection (end of file)
+                        chunk = dataSocket.recv(4096)  # receive part of the file
+                        if not chunk:  # no more data means the server closed data connection
+                            break  # exit the loop
+                        fileBytes += chunk  # append this chunk to full file data
+                        totalBytes += len(chunk)  # add to byte count
+
+                    dataSocket.close()  # close the data connection after one transfer
+
+                    with open(filename, "wb") as f:  # open local file in binary write mode
+                        f.write(fileBytes)  # write downloaded bytes to local file
+
+                    finalResp = receiveData(clientSocket)  # read final control reply, expecting 226 transfer complete
+                    print(finalResp)  # display completion message
+                    print(f"Success. {totalBytes} bytes transferred.")  # required success output with byte count
+                else:
+                    dataSocket.close()  # close data socket on failure
+                    print("Failure: server could not send file.")  # error message for RETR failure
+            else:
+                print("Failure: passive mode (PASV) did not return 227.")  # explain why get failed
+
+        elif userCmd.startswith("put "):  # map put to the FTP STOR command
+            parts = userCmd.split(" ", 1)  # split into command and filename
+            filename = parts[1].strip()  # extract the local filename
+
+            try:
+                with open(filename, "rb") as f:  # open local file in binary read mode
+                    fileData = f.read()  # read entire file into memory
+            except FileNotFoundError:
+                print("Failure: local file not found.")  # error if file does not exist locally
+                continue  # go back to prompt
+
+            pasvStatus, dataSocket = modePASV(clientSocket)  # enter passive mode and open data connection
+            if pasvStatus == 227 and dataSocket is not None:  # only proceed if passive mode succeeded
+                storResp = sendCommand(clientSocket, "STOR " + filename + "\r\n")  # tell server to receive file
+                print(storResp)  # show 150 type message from the server
+
+                if storResp.startswith("150"):  # server is ready to receive the file
+                    dataSocket.sendall(fileData)  # send all file bytes over the data connection
+                    dataSocket.close()  # close data connection to signal end of file transfer
+
+                    finalResp = receiveData(clientSocket)  # read final control reply, expecting 226 transfer complete
+                    print(finalResp)  # display completion message
+                    print(f"Success. {len(fileData)} bytes transferred.")  # required success output with byte count
+                else:
+                    dataSocket.close()  # close data socket on failure
+                    print("Failure: server could not accept file.")  # error message for STOR failure
+            else:
+                print("Failure: passive mode (PASV) did not return 227.")  # explain why put failed
+
+        elif userCmd == "quit":  # quit command to end session
             quitFTP(clientSocket)  # send QUIT to server
             print("Disconnecting...")  # disconnecting message
             clientSocket.close()  # close control socket
