@@ -186,6 +186,16 @@ def main():
                     print("Failure: server could not accept file.")  # error message for STOR failure
             else:
                 print("Failure: passive mode (PASV) did not return 227.")  # explain why put failed
+                
+        elif userCmd.startswith("cd "):  # change remote directory
+            directory = userCmd.split(" ", 1)[1].strip()
+            resp = sendCommand(clientSocket, "CWD " + directory + "\r\n")
+            print(resp)
+
+        elif userCmd.startswith("delete "):  # delete remote file
+            filename = userCmd.split(" ", 1)[1].strip()
+            resp = sendCommand(clientSocket, "DELE " + filename + "\r\n")
+            print(resp)
 
         elif userCmd == "quit":  # quit command to end session
             quitFTP(clientSocket)  # send QUIT to server
